@@ -52,6 +52,18 @@ install_xray() {
   command -v xray >/dev/null 2>&1 && echo "[OK] xray installed." || echo "[WARN] xray not found in PATH."
 }
 
+deploy_files() {
+  mkdir -p "$APP_DIR"
+  cp -f ./monitorVPN.py "$APP_DIR/monitorVPN.py"
+  cp -f ./requirements.txt "$APP_DIR/requirements.txt"
+}
+
+setup_venv() {
+  python3 -m venv "$APP_DIR/.venv"
+  "$APP_DIR/.venv/bin/pip" install -U pip
+  "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
+}
+
 prompt_telegram_config_if_missing() {
   local tg="$APP_DIR/telegram.json"
   if [[ -f "$tg" ]]; then
@@ -60,25 +72,26 @@ prompt_telegram_config_if_missing() {
 
   echo
   echo "=== Telegram setup ==="
-  read -r -p "Enable Telegram? [Y/n]: " ans || true
+  read -r -p "Enable Telegram? [Y/n]: " ans </dev/tty || true
   ans="${ans:-Y}"
   if [[ "$ans" =~ ^[Nn]$ ]]; then
-    cat > "$tg" <<'EOF'
+    cat > "$tg" <<'JSON'
 {
   "enabled": false
 }
-EOF
+JSON
+    chmod 600 "$tg"
     echo "[INFO] Telegram disabled (telegram.json created)."
     return
   fi
 
   local token chatid mode
-  read -r -p "Bot token (from @BotFather): " token
-  read -r -p "Chat ID (numeric): " chatid
-  read -r -p "Telegram mode [direct/proxy/tunnel] (default=direct): " mode || true
+  read -r -p "Bot token (from @BotFather): " token </dev/tty
+  read -r -p "Chat ID (numeric): " chatid </dev/tty
+  read -r -p "Telegram mode [direct/proxy/tunnel] (default=direct): " mode </dev/tty || true
   mode="${mode:-direct}"
 
-  cat > "$tg" <<EOF
+  cat > "$tg" <<JSON
 {
   "enabled": true,
   "bot_token": "${token}",
@@ -96,7 +109,7 @@ EOF
   "auto_minutes": 1,
   "max_workers": 6
 }
-EOF
+JSON
   chmod 600 "$tg"
   echo "[OK] Created $tg"
 }
@@ -109,7 +122,7 @@ prompt_configs_if_missing() {
 
   echo
   echo "=== Servers list ==="
-  read -r -p "Do you want to add server links now? [y/N]: " ans || true
+  read -r -p "Do you want to add server links now? [y/N]: " ans </dev/tty || true
   ans="${ans:-N}"
   if [[ ! "$ans" =~ ^[Yy]$ ]]; then
     echo "[]" > "$cfg"
@@ -118,41 +131,52 @@ prompt_configs_if_missing() {
     return
   fi
 
-  # Collect links until blank line
   echo "Paste links one by one. Press ENTER on empty line to finish."
-  python3 - <<'PY' > "$cfg"
+  local tmp
+  tmp="$(mktemp)"
+
+  # Read from /dev/tty so it ALWAYS waits for user input (fixes EOF/0-items issue)
+  while true; do
+    local line
+    IFS= read -r line </dev/tty || break
+    line="$(echo "$line" | tr -d '\r')"
+    [[ -z "$line" ]] && break
+    echo "$line" >> "$tmp"
+  done
+
+  python3 - <<'PY' "$tmp" > "$cfg"
 import sys, json, uuid
+path = sys.argv[1]
 items=[]
-while True:
-    try:
-        line=input().strip()
-    except EOFError:
-        break
-    if not line:
-        break
-    items.append({
-        "id": str(uuid.uuid4()),
-        "name": "",          # script will infer from #fragment
-        "link": line,
-        "enabled": True,
-        "frozen_until": 0
-    })
+with open(path, "r", encoding="utf-8", errors="ignore") as f:
+    for raw in f:
+        link = raw.strip()
+        if not link:
+            continue
+        items.append({
+            "id": str(uuid.uuid4()),
+            "name": "",
+            "link": link,
+            "enabled": True,
+            "frozen_until": 0
+        })
 json.dump(items, sys.stdout, ensure_ascii=False, indent=2)
 PY
+
+  rm -f "$tmp"
   chmod 600 "$cfg"
-  echo "[OK] Created $cfg with $(python3 -c 'import json;print(len(json.load(open("'"$cfg"'"))))') item(s)."
-}
 
-deploy_files() {
-  mkdir -p "$APP_DIR"
-  cp -f ./monitorVPN.py "$APP_DIR/monitorVPN.py"
-  cp -f ./requirements.txt "$APP_DIR/requirements.txt"
-}
-
-setup_venv() {
-  python3 -m venv "$APP_DIR/.venv"
-  "$APP_DIR/.venv/bin/pip" install -U pip
-  "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt"
+  local count
+  count="$(python3 - <<'PY'
+import json
+p="/opt/monitorVPN/configs.json"
+try:
+    print(len(json.load(open(p,"r",encoding="utf-8"))))
+except Exception:
+    print(0)
+PY
+)"
+  echo "[OK] Created $cfg with ${count} item(s)."
 }
 
 install_systemd() {
