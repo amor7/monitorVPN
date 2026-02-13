@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "bot_token": "PASTE_YOUR_BOT_TOKEN",
+  "chat_id": "PASTE_CHAT_ID",
+  "dashboard_message_id": null,
+  "alerts_enabled": true,
+  "recovery_alerts": true,
+  "alert_cooldown_sec": 300,
+  "telegram_mode": "direct",
+  "telegram_proxy": "",
+  "tunnel_keepalive_sec": 60,
+  "tunnel_pick": "best_ping",
+  "show_uptime": false,
+  "auto_enabled": true,
+  "auto_minutes": 1,
+  "max_workers": 6
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=monitorVPN
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/monitorVPN
+User=root
+Environment=XRAY_PATH=/usr/local/bin/xray
+ExecStart=/opt/monitorVPN/.venv/bin/python /opt/monitorVPN/monitorVPN.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
