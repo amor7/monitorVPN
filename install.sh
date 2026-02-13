@@ -2,6 +2,8 @@
 set -euo pipefail
 
 APP_DIR="/opt/monitorVPN"
+SERVICE_SRC="./systemd/monitorVPN.service"
+SERVICE_DST="/etc/systemd/system/monitorVPN.service"
 
 need_root() {
   if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
@@ -180,7 +182,19 @@ PY
 }
 
 install_systemd() {
-  cp -f ./systemd/monitorVPN.service /etc/systemd/system/monitorVPN.service
+  # Copy service file
+  cp -f "$SERVICE_SRC" "$SERVICE_DST"
+
+  # Ensure timezone for service = Asia/Tehran (fix program time display)
+  if ! grep -q '^Environment=TZ=Asia/Tehran' "$SERVICE_DST"; then
+    # insert after User=... if present, else after [Service]
+    if grep -q '^User=' "$SERVICE_DST"; then
+      sed -i '/^User=/a Environment=TZ=Asia/Tehran' "$SERVICE_DST"
+    else
+      sed -i '/^\[Service\]/a Environment=TZ=Asia/Tehran' "$SERVICE_DST"
+    fi
+  fi
+
   systemctl daemon-reload
   systemctl enable --now monitorVPN
   echo "[OK] Service installed and started: monitorVPN"
