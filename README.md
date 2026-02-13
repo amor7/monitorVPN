@@ -20,7 +20,3 @@ After install:
 - Edit: `/opt/monitorVPN/telegram.json`
 - Add servers: `/opt/monitorVPN/configs.json` (or via Telegram `/add`)
 - Logs: `journalctl -u monitorVPN -f`
-
-## Security
-- Do NOT commit your real `telegram.json` / `configs.json`. Use samples only.
-
