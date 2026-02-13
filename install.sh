@@ -52,19 +52,101 @@ install_xray() {
   command -v xray >/dev/null 2>&1 && echo "[OK] xray installed." || echo "[WARN] xray not found in PATH."
 }
 
+prompt_telegram_config_if_missing() {
+  local tg="$APP_DIR/telegram.json"
+  if [[ -f "$tg" ]]; then
+    return
+  fi
+
+  echo
+  echo "=== Telegram setup ==="
+  read -r -p "Enable Telegram? [Y/n]: " ans || true
+  ans="${ans:-Y}"
+  if [[ "$ans" =~ ^[Nn]$ ]]; then
+    cat > "$tg" <<'EOF'
+{
+  "enabled": false
+}
+EOF
+    echo "[INFO] Telegram disabled (telegram.json created)."
+    return
+  fi
+
+  local token chatid mode
+  read -r -p "Bot token (from @BotFather): " token
+  read -r -p "Chat ID (numeric): " chatid
+  read -r -p "Telegram mode [direct/proxy/tunnel] (default=direct): " mode || true
+  mode="${mode:-direct}"
+
+  cat > "$tg" <<EOF
+{
+  "enabled": true,
+  "bot_token": "${token}",
+  "chat_id": "${chatid}",
+  "dashboard_message_id": null,
+  "alerts_enabled": true,
+  "recovery_alerts": true,
+  "alert_cooldown_sec": 300,
+  "telegram_mode": "${mode}",
+  "telegram_proxy": "",
+  "tunnel_keepalive_sec": 60,
+  "tunnel_pick": "best_ping",
+  "show_uptime": false,
+  "auto_enabled": true,
+  "auto_minutes": 1,
+  "max_workers": 6
+}
+EOF
+  chmod 600 "$tg"
+  echo "[OK] Created $tg"
+}
+
+prompt_configs_if_missing() {
+  local cfg="$APP_DIR/configs.json"
+  if [[ -f "$cfg" ]]; then
+    return
+  fi
+
+  echo
+  echo "=== Servers list ==="
+  read -r -p "Do you want to add server links now? [y/N]: " ans || true
+  ans="${ans:-N}"
+  if [[ ! "$ans" =~ ^[Yy]$ ]]; then
+    echo "[]" > "$cfg"
+    chmod 600 "$cfg"
+    echo "[INFO] Created empty $cfg (you can add later via Telegram /add)."
+    return
+  fi
+
+  # Collect links until blank line
+  echo "Paste links one by one. Press ENTER on empty line to finish."
+  python3 - <<'PY' > "$cfg"
+import sys, json, uuid
+items=[]
+while True:
+    try:
+        line=input().strip()
+    except EOFError:
+        break
+    if not line:
+        break
+    items.append({
+        "id": str(uuid.uuid4()),
+        "name": "",          # script will infer from #fragment
+        "link": line,
+        "enabled": True,
+        "frozen_until": 0
+    })
+json.dump(items, sys.stdout, ensure_ascii=False, indent=2)
+PY
+  chmod 600 "$cfg"
+  echo "[OK] Created $cfg with $(python3 -c 'import json;print(len(json.load(open("'"$cfg"'"))))') item(s)."
+}
+
 deploy_files() {
   mkdir -p "$APP_DIR"
   cp -f ./monitorVPN.py "$APP_DIR/monitorVPN.py"
   cp -f ./requirements.txt "$APP_DIR/requirements.txt"
-
-  if [[ ! -f "$APP_DIR/telegram.json" ]]; then
-    cp ./samples/telegram.sample.json "$APP_DIR/telegram.json"
-    echo "[INFO] Created $APP_DIR/telegram.json from sample. Please edit it."
-  fi
-  if [[ ! -f "$APP_DIR/configs.json" ]]; then
-    cp ./samples/configs.sample.json "$APP_DIR/configs.json"
-    echo "[INFO] Created $APP_DIR/configs.json from sample."
-  fi
 }
 
 setup_venv() {
@@ -86,10 +168,10 @@ install_packages
 install_xray
 deploy_files
 setup_venv
+prompt_telegram_config_if_missing
+prompt_configs_if_missing
 install_systemd
 
 echo
 echo "Done."
-echo "1) Edit: $APP_DIR/telegram.json"
-echo "2) Add servers: $APP_DIR/configs.json (or via Telegram /add)"
-echo "3) Telegram: /status  /test"
+echo "Edit: $APP_DIR/telegram.json and $APP_DIR/configs.json anytime."
